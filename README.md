@@ -1,19 +1,14 @@
 # Personal Devcontainer
 
-It currently contains
-- Persistent bash history
-- Claude Code
-- Rust via Rustup
-- Node LTS via fnm w/ pnpm
-- Python via uv
-- NVIDIA GPU Passthrough [(Install CDI)](https://podman-desktop.io/docs/podman/gpu)
-- Intel CPU Integrated Graphics Passthrough
+## Requirements
 
-And all the relevant vscode extensions
+1. vscode
+2. Install Remote Development Pack by Microsoft
 
-Works with podman too!
+## bashrc alias
 
 Here's my alias for using this
-```
+```bash
 alias devcontainer='git clone https://github.com/stevenhuyn/.devcontainer.git .devcontainer && rm -rf .devcontainer/.git .devcontainer/README.md && cp -r .devcontainer/.devcontainer/. .devcontainer/ && rm -rf .devcontainer/.devcontainer'
 ```
+

@@ -1,7 +1,7 @@
 {
-  "name": "podbox",
+  "name": "box",
   "build": {
-    "dockerfile": "Containerfile"
+    "dockerfile": "Dockerfile"
   },
 
   "customizations": {
@@ -42,7 +42,7 @@
           "editor.formatOnSave": true
         },
         "[json]": {
-          "editor.defaultFormatter": "vscode.json-language-features",
+          "editor.defaultFormatter": "esbenp.prettier-vscode",
           "editor.formatOnSave": true
         },
         "eslint.validate": [
@@ -76,24 +76,15 @@
 
         // Misc
         "eamodio.gitlens",
-        "fill-labs.dependi"
+        "fill-labs.dependi",
+        "ms-azuretools.vscode-containers"
       ]
     }
   },
 
   "mounts": [
     "source=projectname-bashhistory,target=/commandhistory,type=volume"
-    // "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,readonly"
   ],
-
-  // For some reason having this without the Graphics packages in the Containerfile breaks git integration
-  // "containerEnv": {
-  //   "DISPLAY": "${localEnv:DISPLAY}",
-  //   "XDG_RUNTIME_DIR": "/tmp/user/1000"
-  // },
-
-  "runArgs": ["--device", "nvidia.com/gpu=all"],
-
 
   "remoteUser": "ubuntu",
   "containerUser": "ubuntu",
