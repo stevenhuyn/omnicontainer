@@ -12,3 +12,7 @@ Here's my alias for using this
 alias devcontainer='git clone https://github.com/stevenhuyn/.devcontainer.git .devcontainer && rm -rf .devcontainer/.git .devcontainer/README.md && cp -r .devcontainer/.devcontainer/. .devcontainer/ && rm -rf .devcontainer/.devcontainer'
 ```
 
+## Issues
+
+Might need to `CTRL + SHIFT + P` + `Reload Window`
+Per this issue: https://github.com/microsoft/vscode-remote-release/issues/11306
