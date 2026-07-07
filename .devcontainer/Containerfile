@@ -1,11 +1,11 @@
-FROM node:24
+FROM ubuntu:24.04
 
 ARG TZ
 ENV TZ="$TZ"
 
-# Install basic development tools and iptables/ipset.
-# Note vs upstream: zsh is removed; build-essential/curl/pkg-config/libssl-dev
-# are added so cargo/uv can build native crates later.
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install basic development tools.
 RUN apt-get update && apt-get install -y --no-install-recommends \
   less \
   git \
@@ -31,20 +31,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libssl-dev \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Install Node.js (v24) via NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+  && apt-get install -y nodejs \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Fix GID/UID 1000 collision by renaming the default 'ubuntu' user to 'node'
+ARG USERNAME=node
+RUN usermod -l $USERNAME -d /home/$USERNAME -m ubuntu \
+  && groupmod -n $USERNAME ubuntu \
+  && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+  && chmod 0440 /etc/sudoers.d/$USERNAME
+
 # Ensure default node user has access to /usr/local/share
 RUN mkdir -p /usr/local/share/npm-global && \
-  chown -R node:node /usr/local/share
+  chown -R node:node /usr/local/share /usr/local/bin
 
-ARG USERNAME=node
-
-# Persist bash history (this is your "persisted commands").
+# Persist bash history
 RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
   && mkdir /commandhistory \
   && touch /commandhistory/.bash_history \
   && chown -R $USERNAME /commandhistory \
   && echo "$SNIPPET" >> /home/node/.bashrc
 
-# Set `DEVCONTAINER` environment variable to help with orientation
+# Set `DEVCONTAINER` environment variable
 ENV DEVCONTAINER=true
 
 # Create workspace and config directories and set permissions
@@ -62,37 +72,29 @@ ENV CARGO_HOME=/home/node/.cargo
 ENV RUSTUP_HOME=/home/node/.rustup
 ENV PATH=/home/node/.local/bin:/home/node/.cargo/bin:/usr/local/share/npm-global/bin:$PATH
 
-# Bash is the shell. No zsh, no powerlevel10k.
+# Bash configuration
 ENV SHELL=/bin/bash
 ENV EDITOR=nano
 ENV VISUAL=nano
 
-# Claude Code is NOT installed here: the VS Code extension bundles its own
-# private CLI copy. The .claude config volume still persists the extension's
-# auth across rebuilds. Install the standalone CLI here only if you want
-# `claude` on the terminal PATH inside the container.
-
-# pnpm via corepack (bundled with node). Shims must go to a node-owned dir on
-# PATH; corepack's default target (next to the node binary, /usr/local/bin) is
-# root-owned and fails under USER node with EACCES.
+# pnpm via corepack
 RUN mkdir -p /usr/local/share/npm-global/bin && \
   corepack enable --install-directory /usr/local/share/npm-global/bin pnpm && \
   corepack prepare pnpm@latest --activate
 
-# uv (Python). Also prebake a Python so `uv run` works offline once built.
+# uv (Python)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
   uv python install 3.12
 
-# Rust via rustup (minimal profile + clippy/rustfmt)
+# Rust via rustup
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
   sh -s -- -y --profile minimal --default-toolchain stable --component clippy,rustfmt
 
-# jj (jujutsu) — prebuilt binary via cargo-binstall, no slow compile.
+# jj (jujutsu) via cargo-binstall
 RUN curl -L --proto '=https' --tlsv1.2 -sSf \
   https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash && \
   cargo binstall -y jj-cli
 
-# Fail the build loudly here if any tool is missing or off-PATH, instead of
-# discovering it at container-start time.
+# Verify toolchains
 RUN node --version && pnpm --version && uv --version && \
-  rustc --version && cargo --version && jj --version
+  git --version && rustc --version && cargo --version && jj --version
