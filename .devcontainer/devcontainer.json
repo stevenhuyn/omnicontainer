@@ -30,7 +30,8 @@
             "path": "bash",
             "icon": "terminal-bash"
           }
-        }
+        },
+        "git.enabled": false
       }
     }
   },
