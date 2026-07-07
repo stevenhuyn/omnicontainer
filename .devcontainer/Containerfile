@@ -3,8 +3,6 @@ FROM node:24
 ARG TZ
 ENV TZ="$TZ"
 
-ARG GIT_DELTA_VERSION=0.18.2
-
 # Install basic development tools and iptables/ipset.
 # Note vs upstream: zsh is removed; build-essential/curl/pkg-config/libssl-dev
 # are added so cargo/uv can build native crates later.
@@ -54,12 +52,6 @@ RUN mkdir -p /workspace /home/node/.claude && \
   chown -R node:node /workspace /home/node/.claude
 
 WORKDIR /workspace
-
-# git-delta (nicer diffs)
-RUN ARCH=$(dpkg --print-architecture) && \
-  wget "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
-  dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
-  rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
 # ---- Everything below runs as the non-root node user ----
 USER node
