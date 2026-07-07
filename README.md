@@ -16,3 +16,8 @@ alias devcontainer='git clone https://github.com/stevenhuyn/.devcontainer.git .d
 
 Might need to `CTRL + SHIFT + P` + `Reload Window`
 Per this issue: https://github.com/microsoft/vscode-remote-release/issues/11306
+
+```
+gh auth login
+gh auth setup-git
+```
