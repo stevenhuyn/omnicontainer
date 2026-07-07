@@ -1,2 +1,106 @@
-FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+FROM node:24
+
+ARG TZ
+ENV TZ="$TZ"
+
+ARG GIT_DELTA_VERSION=0.18.2
+
+# Install basic development tools and iptables/ipset.
+# Note vs upstream: zsh is removed; build-essential/curl/pkg-config/libssl-dev
+# are added so cargo/uv can build native crates later.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  less \
+  git \
+  procps \
+  sudo \
+  fzf \
+  man-db \
+  unzip \
+  gnupg2 \
+  gh \
+  iptables \
+  ipset \
+  iproute2 \
+  dnsutils \
+  aggregate \
+  jq \
+  nano \
+  vim \
+  curl \
+  ca-certificates \
+  build-essential \
+  pkg-config \
+  libssl-dev \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Ensure default node user has access to /usr/local/share
+RUN mkdir -p /usr/local/share/npm-global && \
+  chown -R node:node /usr/local/share
+
+ARG USERNAME=node
+
+# Persist bash history (this is your "persisted commands").
+RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
+  && mkdir /commandhistory \
+  && touch /commandhistory/.bash_history \
+  && chown -R $USERNAME /commandhistory \
+  && echo "$SNIPPET" >> /home/node/.bashrc
+
+# Set `DEVCONTAINER` environment variable to help with orientation
+ENV DEVCONTAINER=true
+
+# Create workspace and config directories and set permissions
+RUN mkdir -p /workspace /home/node/.claude && \
+  chown -R node:node /workspace /home/node/.claude
+
+WORKDIR /workspace
+
+# git-delta (nicer diffs)
+RUN ARCH=$(dpkg --print-architecture) && \
+  wget "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
+  dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
+  rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
+
+# ---- Everything below runs as the non-root node user ----
+USER node
+
+# npm global prefix + toolchain bins on PATH.
+ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
+ENV CARGO_HOME=/home/node/.cargo
+ENV RUSTUP_HOME=/home/node/.rustup
+ENV PATH=/home/node/.local/bin:/home/node/.cargo/bin:/usr/local/share/npm-global/bin:$PATH
+
+# Bash is the shell. No zsh, no powerlevel10k.
+ENV SHELL=/bin/bash
+ENV EDITOR=nano
+ENV VISUAL=nano
+
+# Claude Code is NOT installed here: the VS Code extension bundles its own
+# private CLI copy. The .claude config volume still persists the extension's
+# auth across rebuilds. Install the standalone CLI here only if you want
+# `claude` on the terminal PATH inside the container.
+
+# pnpm via corepack (bundled with node). Shims must go to a node-owned dir on
+# PATH; corepack's default target (next to the node binary, /usr/local/bin) is
+# root-owned and fails under USER node with EACCES.
+RUN mkdir -p /usr/local/share/npm-global/bin && \
+  corepack enable --install-directory /usr/local/share/npm-global/bin pnpm && \
+  corepack prepare pnpm@latest --activate
+
+# uv (Python). Also prebake a Python so `uv run` works offline once built.
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+  uv python install 3.12
+
+# Rust via rustup (minimal profile + clippy/rustfmt)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+  sh -s -- -y --profile minimal --default-toolchain stable --component clippy,rustfmt
+
+# jj (jujutsu) — prebuilt binary via cargo-binstall, no slow compile.
+RUN curl -L --proto '=https' --tlsv1.2 -sSf \
+  https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash && \
+  cargo binstall -y jj-cli
+
+# Fail the build loudly here if any tool is missing or off-PATH, instead of
+# discovering it at container-start time.
+RUN node --version && pnpm --version && uv --version && \
+  rustc --version && cargo --version && jj --version

@@ -1,19 +1,48 @@
 {
-    "name": "dev",
-    "build": { "dockerfile": "Containerfile" },
-
-    "features": {
-        "ghcr.io/devcontainers/features/rust:1": {
-            "version": "latest",
-            "profile": "default"
+  "name": "Claude Code Sandbox (uv + rust + node/pnpm + jj)",
+  "build": {
+    "dockerfile": "Containerfile",
+    "args": {
+      "TZ": "${localEnv:TZ:Australia/Melbourne}",
+      "GIT_DELTA_VERSION": "0.18.2"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "eamodio.gitlens",
+        "rust-lang.rust-analyzer",
+        "ms-python.python",
+        "charliermarsh.ruff"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
         },
-        "ghcr.io/devcontainers/features/node:1": {
-            "version": "lts",
-            "pnpmVersion": "latest"
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "bash",
+            "icon": "terminal-bash"
+          }
         }
-    },
-
-    // jj is installed via cargo so it picks up the Rust toolchain from the feature.
-    // --locked respects jj's Cargo.lock for reproducible builds.
-    "postCreateCommand": "cargo install --locked --bin jj jj-cli"
+      }
+    }
+  },
+  "remoteUser": "node",
+  "mounts": [
+    "source=claude-code-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
+    "source=claude-code-config-${devcontainerId},target=/home/node/.claude,type=volume"
+  ],
+  "containerEnv": {
+    "NODE_OPTIONS": "--max-old-space-size=4096",
+    "CLAUDE_CONFIG_DIR": "/home/node/.claude"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace"
 }
