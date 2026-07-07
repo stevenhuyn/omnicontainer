@@ -1,5 +1,12 @@
 # Personal Devcontainer
 
+## What's inside
+
+- node and pnpm
+- rust via rustup
+- python via uv
+- jj vcs
+
 ## Requirements
 
 1. vscode
@@ -9,13 +16,15 @@
 
 Here's my alias for using this
 ```bash
-alias devcontainer='git clone https://github.com/stevenhuyn/.devcontainer.git .devcontainer && rm -rf .devcontainer/.git .devcontainer/README.md && cp -r .devcontainer/.devcontainer/. .devcontainer/ && rm -rf .devcontainer/.devcontainer'
+alias devcontainer='jj git clone https://github.com/stevenhuyn/omnicontainer /tmp/omnicontainer && cp -r /tmp/omnicontainer/.devcontainer . && rm -rf /tmp/omnicontainer'
 ```
 
 ## Issues
 
 Might need to `CTRL + SHIFT + P` + `Reload Window`
 Per this issue: https://github.com/microsoft/vscode-remote-release/issues/11306
+
+## jj/git authentication
 
 ```
 gh auth login
