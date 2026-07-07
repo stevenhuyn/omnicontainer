@@ -51,5 +51,5 @@
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "jj config set --user user.email \"18359644+stevenhuyn@users.noreply.github.com\" && jj config set --user user.name \"stevenhuyn\""
+  "postCreateCommand": "jj config set --user user.email \"18359644+stevenhuyn@users.noreply.github.com\" && jj config set --user user.name \"stevenhuyn\" && jj bookmark set main -r @"
 }
