@@ -1,3 +1,6 @@
+ARG DENO_VERSION=2.9.2
+FROM denoland/deno:bin-${DENO_VERSION} AS deno-bin
+
 FROM ubuntu:24.04
 
 ARG TZ
@@ -36,6 +39,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
   && apt-get install -y nodejs \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Install Deno (single static binary from the official image)
+COPY --from=deno-bin /deno /usr/local/bin/deno
+
 # Fix GID/UID 1000 collision by renaming the default 'ubuntu' user to 'node'
 ARG USERNAME=node
 RUN usermod -l $USERNAME -d /home/$USERNAME -m ubuntu \
@@ -58,8 +64,8 @@ RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhisto
 ENV DEVCONTAINER=true
 
 # Create workspace and config directories and set permissions
-RUN mkdir -p /workspace /home/node/.claude && \
-  chown -R node:node /workspace /home/node/.claude
+RUN mkdir -p /workspace /home/node/.claude /home/node/.cache/deno /usr/local/share/deno-global/bin && \
+  chown -R node:node /workspace /home/node/.claude /home/node/.cache /usr/local/share/deno-global
 
 WORKDIR /workspace
 
@@ -70,7 +76,12 @@ USER node
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV CARGO_HOME=/home/node/.cargo
 ENV RUSTUP_HOME=/home/node/.rustup
-ENV PATH=/home/node/.local/bin:/home/node/.cargo/bin:/usr/local/share/npm-global/bin:$PATH
+ENV PATH=/home/node/.local/bin:/home/node/.cargo/bin:/usr/local/share/npm-global/bin:/usr/local/share/deno-global/bin:$PATH
+
+# Deno cache + global install locations
+ENV DENO_DIR=/home/node/.cache/deno
+ENV DENO_INSTALL_ROOT=/usr/local/share/deno-global
+ENV DENO_NO_UPDATE_CHECK=1
 
 # Bash configuration
 ENV SHELL=/bin/bash
@@ -97,4 +108,5 @@ RUN curl -L --proto '=https' --tlsv1.2 -sSf \
 
 # Verify toolchains
 RUN node --version && pnpm --version && uv --version && \
-  git --version && rustc --version && cargo --version && jj --version
+  git --version && rustc --version && cargo --version && jj --version && \
+  deno --version
