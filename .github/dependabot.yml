@@ -1,6 +1,7 @@
 # Keeps the SHA-pinned actions in .github/workflows up to date.
-# The cooldown matches the container's package cooldown: a new action release
-# has to be public for 3 days before Dependabot proposes it.
+# A new action release has to be public for 7 days before Dependabot proposes
+# it (longer than the container's 3-day package cooldown; zizmor's
+# dependabot-cooldown audit requires at least 7).
 # (The `go run ...@vX` tool versions in sus-check.yml are bumped by hand.)
 version: 2
 updates:
@@ -9,7 +10,7 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
