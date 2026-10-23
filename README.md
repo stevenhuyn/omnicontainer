@@ -10,12 +10,13 @@
 
 ## Defaults
 
-- **Release cooldown**: npm, pnpm and uv refuse package versions published less
+- **Release cooldown**: npm, pnpm, uv and cargo refuse package versions published less
   than 3 days ago (`RELEASE_COOLDOWN_DAYS` in `devcontainer.json`). To let one
   through in a project:
   - pnpm: `minimumReleaseAgeExclude: [pkg]` in `pnpm-workspace.yaml`
   - npm: `npm i --min-release-age 0 pkg@version`
   - uv: `exclude-newer-package = { pkg = false }` under `[tool.uv]`
+  - cargo (Rust 1.100+): `CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update pkg --precise version`
 - **No dependency install scripts**: `ignore-scripts=true` for npm; pnpm only
   runs build scripts you approve (`pnpm approve-builds`).
 - **Shared caches**: pnpm store, uv, npm and the cargo registry live on volumes

@@ -5,10 +5,10 @@ ENV TZ="$TZ"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Days a package version must have been public before npm, pnpm or uv will
-# install it. Most malicious releases are caught and pulled within hours, so a
+# Days a package version must have been public before npm, pnpm, uv or cargo
+# will install it. Most malicious releases are caught and pulled within hours, so a
 # short cooldown blocks the bulk of supply-chain attacks. Override per project
-# (pnpm-workspace.yaml / .npmrc / pyproject.toml) when you need something fresh.
+# (pnpm-workspace.yaml / .npmrc / pyproject.toml / .cargo/config.toml) when you need something fresh.
 ARG RELEASE_COOLDOWN_DAYS=3
 
 # Install basic development tools. (gh comes from the devcontainer feature.)
@@ -107,7 +107,9 @@ ENV VISUAL=nano
 #   npm  (~/.npmrc)                   min-release-age is in days (npm 11.10+)
 #   pnpm (~/.config/pnpm/config.yaml) minimumReleaseAge is in minutes (pnpm 11+)
 #   uv   (~/.config/uv/uv.toml)       exclude-newer takes a relative duration
-RUN mkdir -p ~/.config/pnpm ~/.config/uv ~/.config/jj \
+#   cargo (~/.cargo/config.toml)      global-min-publish-age takes a duration
+#                                     (enforced from Rust 1.100; ignored before)
+RUN mkdir -p ~/.config/pnpm ~/.config/uv ~/.config/jj ~/.cargo \
   && printf '%s\n' \
     "min-release-age=${RELEASE_COOLDOWN_DAYS}" \
     'ignore-scripts=true' \
@@ -124,6 +126,10 @@ RUN mkdir -p ~/.config/pnpm ~/.config/uv ~/.config/jj \
     "exclude-newer = \"${RELEASE_COOLDOWN_DAYS} days\"" \
     'python-preference = "only-managed"' \
     > ~/.config/uv/uv.toml \
+  && printf '%s\n' \
+    '[registry]' \
+    "global-min-publish-age = \"${RELEASE_COOLDOWN_DAYS} days\"" \
+    > ~/.cargo/config.toml \
   && printf '%s\n' \
     '[ui]' \
     'default-command = "log"' \
@@ -154,4 +160,5 @@ RUN node --version && npm --version && pnpm --version && uv --version && \
   ruff --version && rg --version && fd --version && \
   echo "npm min-release-age (days): $(npm config get min-release-age)" && \
   echo "pnpm minimumReleaseAge (minutes): $(pnpm config get minimumReleaseAge)" && \
-  echo "uv exclude-newer: $(grep exclude-newer ~/.config/uv/uv.toml)"
+  echo "uv exclude-newer: $(grep exclude-newer ~/.config/uv/uv.toml)" && \
+  echo "cargo $(grep global-min-publish-age ~/.cargo/config.toml)"
