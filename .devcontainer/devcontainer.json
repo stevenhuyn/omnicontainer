@@ -4,9 +4,10 @@
     "dockerfile": "Containerfile",
     "args": {
       "TZ": "${localEnv:TZ:Australia/Melbourne}",
-      "GIT_DELTA_VERSION": "0.18.2"
+      "RELEASE_COOLDOWN_DAYS": "3"
     }
   },
+  "init": true,
   "customizations": {
     "vscode": {
       "extensions": [
@@ -16,7 +17,8 @@
         "ms-python.python",
         "charliermarsh.ruff",
         "jjk.jjk",
-        "biomejs.biome"
+        "biomejs.biome",
+        "tamasfe.even-better-toml"
       ],
       "settings": {
         "editor.formatOnSave": true,
@@ -24,6 +26,18 @@
         "editor.codeActionsOnSave": {
           "source.fixAll.eslint": "explicit"
         },
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        },
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        },
+        "[toml]": {
+          "editor.defaultFormatter": "tamasfe.even-better-toml"
+        },
+        "rust-analyzer.check.command": "clippy",
+        "files.insertFinalNewline": true,
+        "files.trimTrailingWhitespace": true,
         "terminal.integrated.defaultProfile.linux": "bash",
         "terminal.integrated.profiles.linux": {
           "bash": {
@@ -43,7 +57,9 @@
   "remoteUser": "node",
   "mounts": [
     "source=claude-code-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
-    "source=claude-code-config-${devcontainerId},target=/home/node/.claude,type=volume"
+    "source=claude-code-config-${devcontainerId},target=/home/node/.claude,type=volume",
+    "source=omnicontainer-cache,target=/home/node/.cache,type=volume",
+    "source=omnicontainer-cargo-registry,target=/home/node/.cargo/registry,type=volume"
   ],
   "containerEnv": {
     "NODE_OPTIONS": "--max-old-space-size=4096",

@@ -5,17 +5,26 @@ ENV TZ="$TZ"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install basic development tools.
+# Days a package version must have been public before npm, pnpm or uv will
+# install it. Most malicious releases are caught and pulled within hours, so a
+# short cooldown blocks the bulk of supply-chain attacks. Override per project
+# (pnpm-workspace.yaml / .npmrc / pyproject.toml) when you need something fresh.
+ARG RELEASE_COOLDOWN_DAYS=3
+
+# Install basic development tools. (gh comes from the devcontainer feature.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
   less \
   git \
   procps \
   sudo \
   fzf \
+  ripgrep \
+  fd-find \
+  tree \
+  shellcheck \
   man-db \
   unzip \
   gnupg2 \
-  gh \
   iptables \
   ipset \
   iproute2 \
@@ -29,12 +38,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   build-essential \
   pkg-config \
   libssl-dev \
+  && ln -s /usr/bin/fdfind /usr/local/bin/fd \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js (v24, includes npm and corepack) via NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
   && apt-get install -y nodejs \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# System-wide git defaults
+RUN git config --system init.defaultBranch main \
+  && git config --system pull.ff only \
+  && git config --system push.autoSetupRemote true \
+  && git config --system fetch.prune true \
+  && git config --system merge.conflictStyle zdiff3 \
+  && git config --system diff.colorMoved default \
+  && git config --system rerere.enabled true
 
 # Fix GID/UID 1000 collision by renaming the default 'ubuntu' user to 'node'
 ARG USERNAME=node
@@ -57,9 +76,11 @@ RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhisto
 # Set `DEVCONTAINER` environment variable
 ENV DEVCONTAINER=true
 
-# Create workspace and config directories and set permissions
-RUN mkdir -p /workspace /home/node/.claude /home/node/.npm && \
-  chown -R node:node /workspace /home/node/.claude /home/node/.npm
+# Create workspace, config and cache directories owned by node, so the volumes
+# mounted over ~/.claude, ~/.cache and ~/.cargo/registry aren't root-owned.
+RUN mkdir -p /workspace /home/node/.claude /home/node/.cache /home/node/.config \
+  /home/node/.cargo/registry && \
+  chown -R node:node /workspace /home/node
 
 WORKDIR /workspace
 
@@ -68,24 +89,55 @@ USER node
 
 # npm global prefix + toolchain bins on PATH.
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
-ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV NPM_CONFIG_CACHE=/home/node/.cache/npm
 ENV CARGO_HOME=/home/node/.cargo
 ENV RUSTUP_HOME=/home/node/.rustup
 ENV PATH=/home/node/.local/bin:/home/node/.cargo/bin:/usr/local/share/npm-global/bin:$PATH
+
+# The uv cache lives on a volume, so hardlinks into /workspace can't work.
+ENV UV_LINK_MODE=copy
 
 # Bash configuration
 ENV SHELL=/bin/bash
 ENV EDITOR=nano
 ENV VISUAL=nano
 
+# Package manager defaults: release cooldown, no install scripts from deps,
+# less noise. Written before any installs below so they apply to them too.
+#   npm  (~/.npmrc)                   min-release-age is in days (npm 11.10+)
+#   pnpm (~/.config/pnpm/config.yaml) minimumReleaseAge is in minutes (pnpm 11+)
+#   uv   (~/.config/uv/uv.toml)       exclude-newer takes a relative duration
+RUN mkdir -p ~/.config/pnpm ~/.config/uv ~/.config/jj \
+  && printf '%s\n' \
+    "min-release-age=${RELEASE_COOLDOWN_DAYS}" \
+    'ignore-scripts=true' \
+    'fund=false' \
+    'update-notifier=false' \
+    > ~/.npmrc \
+  && printf '%s\n' \
+    "minimumReleaseAge: $((RELEASE_COOLDOWN_DAYS * 1440))" \
+    'blockExoticSubdeps: true' \
+    'strictDepBuilds: true' \
+    'storeDir: /home/node/.cache/pnpm/store' \
+    > ~/.config/pnpm/config.yaml \
+  && printf '%s\n' \
+    "exclude-newer = \"${RELEASE_COOLDOWN_DAYS} days\"" \
+    'python-preference = "only-managed"' \
+    > ~/.config/uv/uv.toml \
+  && printf '%s\n' \
+    '[ui]' \
+    'default-command = "log"' \
+    > ~/.config/jj/config.toml
+
 # pnpm via corepack
 RUN mkdir -p /usr/local/share/npm-global/bin && \
   corepack enable --install-directory /usr/local/share/npm-global/bin pnpm && \
   corepack prepare pnpm@latest --activate
 
-# uv (Python)
+# uv (Python) + ruff CLI
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-  uv python install 3.12
+  uv python install 3.12 && \
+  uv tool install ruff
 
 # Rust via rustup
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
@@ -96,6 +148,10 @@ RUN curl -L --proto '=https' --tlsv1.2 -sSf \
   https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash && \
   cargo binstall -y jj-cli
 
-# Verify toolchains
+# Verify toolchains, and print the cooldowns each package manager actually sees
 RUN node --version && npm --version && pnpm --version && uv --version && \
-  git --version && rustc --version && cargo --version && jj --version
+  git --version && rustc --version && cargo --version && jj --version && \
+  ruff --version && rg --version && fd --version && \
+  echo "npm min-release-age (days): $(npm config get min-release-age)" && \
+  echo "pnpm minimumReleaseAge (minutes): $(pnpm config get minimumReleaseAge)" && \
+  echo "uv exclude-newer: $(grep exclude-newer ~/.config/uv/uv.toml)"
