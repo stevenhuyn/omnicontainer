@@ -1,0 +1,153 @@
+# Checks for sussness: leaked secrets, known-vulnerable or malicious
+# dependencies, sketchy GitHub Actions patterns, and a Containerfile that
+# doesn't build or lint.
+#
+# Hardening applied to this workflow itself:
+# - Every action is pinned to a full commit SHA (tags can be force-pushed, as
+#   happened to aquasecurity/trivy-action in March 2026).
+# - CLI tools are fetched with `go run module@version`, which Go verifies
+#   against its public checksum database, so a re-tagged release can't swap
+#   the code underneath us.
+# - No secrets, read-only token, no pull_request_target, no persisted creds.
+
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1" # weekly, to catch advisories published after merge
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OSV_SCANNER: github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.7.0
+  GITLEAKS: github.com/zricethezav/gitleaks/v8@v8.30.1
+  GO_VERSION: "1.27"
+
+jobs:
+  workflows:
+    name: Audit GitHub Actions (zizmor)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
+        with:
+          advanced-security: false
+
+  lint:
+    name: Lint Containerfile and scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: .devcontainer/Containerfile
+          failure-threshold: error
+      - name: shellcheck
+        run: shellcheck .devcontainer/*.sh
+
+  secrets:
+    name: Leaked secrets (gitleaks, full history)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: gitleaks
+        run: go run "$GITLEAKS" git --redact --verbose .
+
+  dependencies:
+    name: Lockfiles (osv-scanner)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      # Covers pnpm-lock.yaml, package-lock.json, uv.lock, Cargo.lock, etc.
+      # OSV includes malicious-package (MAL-) advisories as well as CVEs.
+      # Passes cleanly when the repo has no lockfiles.
+      - name: osv-scanner (source)
+        run: go run "$OSV_SCANNER" scan source --recursive --allow-no-lockfiles .
+
+  image:
+    name: Build image and scan it (podman + osv-scanner)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Build (fails if the image's own toolchain self-test fails)
+        run: .devcontainer/build.sh
+      - name: Export image
+        run: podman save -o "$RUNNER_TEMP/image.tar" devbox
+      # Ubuntu base images always carry some unfixed CVEs, so ordinary vulns
+      # are reported in the job summary but only malicious packages fail.
+      - name: osv-scanner (image)
+        run: |
+          set +e
+          go run "$OSV_SCANNER" scan image --archive --allow-no-lockfiles \
+            --format json --output-file "$RUNNER_TEMP/osv.json" "$RUNNER_TEMP/image.tar"
+          rc=$?
+          set -e
+          if [ "$rc" -gt 1 ]; then
+            echo "::error::osv-scanner failed with exit code $rc"
+            exit "$rc"
+          fi
+
+          total=$(jq '[.results[]?.packages[]?.vulnerabilities[]?] | length' "$RUNNER_TEMP/osv.json")
+          malicious=$(jq -r '.results[]?.packages[]?
+            | .package.name as $name
+            | .vulnerabilities[]?
+            | select(.id | startswith("MAL-"))
+            | "\(.id) \($name)"' "$RUNNER_TEMP/osv.json")
+
+          {
+            echo "### Image scan"
+            echo "Known vulnerabilities (informational): $total"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$malicious" ]; then
+            echo "Malicious packages found:" >> "$GITHUB_STEP_SUMMARY"
+            echo "$malicious" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Malicious packages in image: $malicious"
+            exit 1
+          fi
